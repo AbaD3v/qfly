@@ -1,26 +1,74 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Базовые цвета */
+  --background: #020617; /* Slate 950 */
+  --foreground: #f8fafc;
+  
+  /* Цветовая схема Q'FLY (Киберпанк/Авиация) */
+  --color-primary: #38bdf8;   /* Небесно-голубой (Sky 400) */
+  --color-accent: #f97316;    /* Оранжевый взлетный (Orange 500) */
+  --color-surface: #0f172a;   /* Slate 900 */
+  --color-success: #22c55e;   /* Зеленый (Green 500) */
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  
+  /* Добавляем наши кастомные цвета, чтобы Tailwind их видел */
+  --color-primary: var(--color-primary);
+  --color-accent: var(--color-accent);
+  --color-surface: var(--color-surface);
+  --color-success: var(--color-success);
+  
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* Принудительная темная тема для интерфейса ЦУП */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  overflow-x: hidden;
+}
+
+@layer components {
+  /* Твоя карточка */
+  .glass-card {
+    @apply bg-slate-900/40 backdrop-blur-md border border-white/10 shadow-2xl;
+  }
+
+  /* Исправление для кнопок (Admin/Dashboard) */
+  .btn-cyber {
+    @apply relative flex items-center justify-center gap-2 px-6 py-3 
+           bg-slate-900/60 border border-white/10 rounded-xl
+           text-white font-mono text-xs font-bold uppercase tracking-widest
+           transition-all duration-300 hover:border-primary/50 hover:bg-slate-800;
+  }
+}
+
+/* Твой дрон на карте */
+.drone-glow {
+  width: 14px;
+  height: 14px;
+  background: var(--color-primary);
+  border-radius: 2px;
+  transform: rotate(45deg);
+  box-shadow: 0 0 15px var(--color-primary), 0 0 30px rgba(56, 189, 248, 0.5);
+  border: 1.5px solid white;
+  /* ЭТОТ ТРЮК ДЕЛАЕТ ПОЛЕТ ПЛАВНЫМ */
+  transition: all 2s linear;
+}
+
+/* Leaflet Fixes */
+.cyber-popup .leaflet-popup-content-wrapper { @apply bg-transparent shadow-none p-0; }
+.cyber-popup .leaflet-popup-tip { @apply hidden; }
+.cyber-popup .leaflet-popup-content { @apply m-0; }
+.cyber-popup .leaflet-popup-close-button { @apply hidden; }
+.drone-marker-container {
+  pointer-events: none;
+  /* Также добавим транзишн для обертки маркера, если ты двигаешь весь HTML-контейнер */
+  transition: transform 2s linear;
 }
