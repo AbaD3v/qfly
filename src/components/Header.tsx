@@ -8,8 +8,8 @@ import {
   User as UserIcon, 
   LogOut, 
   Plus, 
-  Terminal, 
-  Map, 
+  LayoutDashboard, 
+  Info, 
   CreditCard 
 } from 'lucide-react'
 
@@ -48,16 +48,16 @@ export default function Header() {
     router.push('/')
   }
 
-  // Стилизация активной ссылки (Неоновое свечение)
+  // Стилизация активной ссылки (теперь более мягкая, без "неона")
   const isActive = (path: string) =>
     router.pathname.startsWith(path) && path !== '/' || router.pathname === path
-      ? 'text-primary font-bold drop-shadow-[0_0_8px_rgba(56,189,248,0.8)]'
+      ? 'text-primary font-bold'
       : 'text-slate-400 hover:text-white'
 
   // Логика фона: если главная и не скроллили -> прозрачный. Иначе -> стекло.
   const navBg = isTransparentPage && !scrolled
     ? 'bg-transparent border-transparent'
-    : 'bg-background/80 backdrop-blur-lg border-b border-white/5 shadow-[0_4px_30px_rgba(0,0,0,0.5)]'
+    : 'bg-background/80 backdrop-blur-lg border-b border-white/5 shadow-sm'
 
   return (
     <motion.nav 
@@ -70,68 +70,68 @@ export default function Header() {
 
         {/* Логотип */}
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-10 h-10 bg-primary/10 border border-primary/30 rounded-xl flex items-center justify-center group-hover:bg-primary/20 transition-colors shadow-[0_0_15px_rgba(56,189,248,0.2)]">
-            <span className="text-primary font-bold text-xl">Q</span>
+          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform shadow-[0_0_15px_rgba(56,189,248,0.2)]">
+            <span className="text-background font-black text-xl">Q</span>
           </div>
-          <span className="text-xl font-black text-white tracking-widest hidden sm:block">
+          <span className="text-xl font-bold text-white tracking-wide hidden sm:block">
             Q'FLY
           </span>
         </Link>
 
         {/* Навигация */}
         <div className="flex items-center gap-6 md:gap-8">
-          <div className="hidden md:flex items-center gap-8 font-mono text-xs tracking-widest">
-            <Link href="/about" className={`flex items-center gap-2 transition-all ${isActive('/about')}`}>
-              <Map className="w-4 h-4" />
-              ИНФРАСТРУКТУРА
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium tracking-wide">
+            <Link href="/about" className={`flex items-center gap-2 transition-colors ${isActive('/about')}`}>
+              <Info className="w-4 h-4" />
+              О сервисе
             </Link>
-            <Link href="/pricing" className={`flex items-center gap-2 transition-all ${isActive('/pricing')}`}>
+            <Link href="/pricing" className={`flex items-center gap-2 transition-colors ${isActive('/pricing')}`}>
               <CreditCard className="w-4 h-4" />
-              ТАРИФЫ
+              Тарифы
             </Link>
           </div>
 
           <div className="h-6 w-px bg-white/10 hidden md:block" /> {/* Разделитель */}
 
           {user ? (
-            <div className="flex items-center gap-4 md:gap-6 font-mono text-xs tracking-widest">
-              <Link href="/dashboard" className={`hidden md:flex items-center gap-2 transition-all ${isActive('/dashboard')}`}>
-                <Terminal className="w-4 h-4" />
-                ТЕРМИНАЛ
+            <div className="flex items-center gap-4 md:gap-6 text-sm font-medium tracking-wide">
+              <Link href="/dashboard" className={`hidden md:flex items-center gap-2 transition-colors ${isActive('/dashboard')}`}>
+                <LayoutDashboard className="w-4 h-4" />
+                Мои заказы
               </Link>
               
-              <Link href="/profile" className={`hidden sm:flex items-center gap-2 transition-all ${isActive('/profile')}`}>
+              <Link href="/profile" className={`hidden sm:flex items-center gap-2 transition-colors ${isActive('/profile')}`}>
                 <UserIcon className="w-4 h-4" />
-                ПРОФИЛЬ
+                Профиль
               </Link>
               
               <button
                 onClick={handleLogout}
-                className="text-slate-500 hover:text-accent transition-colors flex items-center gap-2"
-                title="Отключиться от сети"
+                className="text-slate-500 hover:text-red-400 transition-colors flex items-center gap-2"
+                title="Выйти из аккаунта"
               >
                 <LogOut className="w-4 h-4" />
-                <span className="hidden sm:block">ВЫХОД</span>
+                <span className="hidden sm:block">Выйти</span>
               </button>
 
               <Link 
                 href="/order/new" 
-                className="flex items-center gap-2 bg-primary text-background px-4 py-2.5 rounded-lg font-bold hover:bg-primary/90 transition-all shadow-[0_0_15px_rgba(56,189,248,0.3)] hover:scale-105"
+                className="flex items-center gap-2 bg-primary text-background px-5 py-2.5 rounded-xl font-bold hover:bg-primary/90 transition-all shadow-md hover:shadow-primary/20 hover:-translate-y-0.5"
               >
                 <Plus className="w-4 h-4" />
-                <span className="hidden sm:block">ЗАПУСК</span>
+                <span className="hidden sm:block">Создать заказ</span>
               </Link>
             </div>
           ) : (
-            <div className="flex items-center gap-4 md:gap-6 font-mono text-xs tracking-widest">
-              <Link href="/auth/login" className={`transition-all ${isActive('/auth/login')}`}>
-                ВХОД
+            <div className="flex items-center gap-4 md:gap-6 text-sm font-medium tracking-wide">
+              <Link href="/auth/login" className={`transition-colors ${isActive('/auth/login')}`}>
+                Войти
               </Link>
               <Link
                 href="/auth/register"
-                className="bg-white text-background px-5 py-2.5 rounded-lg font-bold hover:bg-slate-200 transition-all shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:scale-105"
+                className="bg-white text-background px-6 py-2.5 rounded-xl font-bold hover:bg-slate-200 transition-all shadow-md hover:-translate-y-0.5"
               >
-                ПОЛУЧИТЬ ДОСТУП
+                Регистрация
               </Link>
             </div>
           )}

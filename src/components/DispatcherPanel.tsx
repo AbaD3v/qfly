@@ -167,4 +167,4 @@ export default function DispatcherPanel({ orderId, orderWeight, onAssigned }: Di
       )}
     </motion.div>
   );
-}
+} 

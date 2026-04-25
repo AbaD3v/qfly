@@ -9,9 +9,9 @@ import {
   Mail, 
   Phone, 
   Lock, 
-  ShieldCheck, 
   Loader2, 
-  AlertTriangle 
+  AlertTriangle,
+  UserPlus
 } from 'lucide-react'
 
 // Анимационные пресеты
@@ -47,7 +47,7 @@ export default function Register() {
       })
 
       if (signUpError) {
-        setError(signUpError.message)
+        setError(signUpError.message) // Supabase сам возвращает текст ошибки
         setLoading(false)
         return
       }
@@ -60,45 +60,45 @@ export default function Register() {
         })
         router.push('/dashboard')
       } else {
-        setError('Требуется верификация. Письмо отправлено на указанный email.')
+        setError('Регистрация успешна! Проверьте вашу почту для подтверждения аккаунта.')
         setLoading(false)
       }
     } catch {
-      setError('КРИТИЧЕСКАЯ ОШИБКА СИСТЕМЫ: Соединение прервано.')
+      setError('Ошибка связи с сервером. Проверьте подключение к интернету.')
       setLoading(false)
     }
   }
 
   return (
     <>
-      <Head><title>Инициализация профиля — Q'fly</title></Head>
+      <Head><title>Регистрация — Q'fly</title></Head>
 
-      <div className="min-h-screen bg-background bg-grid-pattern flex items-center justify-center px-6 relative overflow-hidden">
+      <div className="min-h-screen bg-background bg-grid-pattern flex items-center justify-center px-6 relative overflow-hidden selection:bg-primary/30">
         
-        {/* Аварийное свечение на фоне */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
+        {/* Мягкое свечение на фоне */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
 
         <motion.div 
           variants={containerVariants}
           initial="hidden"
           animate="show"
-          className="w-full max-w-md relative z-10"
+          className="w-full max-w-md relative z-10 my-12"
         >
-          {/* Форма / Терминал */}
-          <div className="glass-card rounded-[2rem] p-8 md:p-10 relative overflow-hidden">
+          {/* Форма */}
+          <div className="glass-card rounded-[2.5rem] p-8 md:p-10 relative overflow-hidden shadow-2xl border-white/5">
             {/* Блик на стекле */}
             <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/5 to-transparent pointer-events-none" />
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-1 bg-gradient-to-r from-transparent via-primary to-transparent" />
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[2px] bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
 
             <motion.div variants={itemVariants} className="text-center mb-10">
               <Link href="/" className="inline-flex items-center gap-2 group mb-6">
-                <div className="w-10 h-10 bg-primary/10 border border-primary/30 rounded-xl flex items-center justify-center group-hover:bg-primary/20 transition-colors shadow-[0_0_15px_rgba(56,189,248,0.2)]">
-                  <span className="text-primary font-bold text-xl">Q</span>
+                <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center group-hover:scale-105 transition-transform shadow-[0_0_20px_rgba(56,189,248,0.3)]">
+                  <span className="text-background font-black text-2xl">Q</span>
                 </div>
               </Link>
-              <h1 className="text-2xl font-bold text-white tracking-wide">АВТОРИЗАЦИЯ ОПЕРАТОРА</h1>
-              <p className="text-slate-500 font-mono text-xs mt-2 tracking-widest">
-                СИСТЕМА ДОСТАВКИ Q'FLY
+              <h1 className="text-2xl font-bold text-white tracking-tight">Создать аккаунт</h1>
+              <p className="text-slate-400 text-sm mt-2">
+                Присоединяйтесь к сервису быстрой доставки
               </p>
             </motion.div>
 
@@ -106,10 +106,10 @@ export default function Register() {
               <motion.div 
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="bg-accent/10 border border-accent/30 text-accent text-sm px-4 py-3 rounded-xl mb-6 flex items-start gap-3 backdrop-blur-sm"
+                className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-xl mb-6 flex items-start gap-3 backdrop-blur-sm"
               >
                 <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
-                <div className="font-mono text-xs leading-relaxed">{error}</div>
+                <div className="leading-relaxed">{error}</div>
               </motion.div>
             )}
 
@@ -123,10 +123,10 @@ export default function Register() {
                   name="name"
                   type="text"
                   required
-                  placeholder="ПОЗЫВНОЙ (ИМЯ)"
+                  placeholder="Ваше имя"
                   value={form.name}
                   onChange={handleChange}
-                  className="w-full bg-background/50 border border-white/10 rounded-xl pl-12 pr-4 py-3.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all font-mono text-sm"
+                  className="w-full bg-surface/50 border border-white/10 rounded-xl pl-12 pr-4 py-4 text-white placeholder:text-slate-500 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all text-sm"
                 />
               </motion.div>
 
@@ -138,10 +138,10 @@ export default function Register() {
                   name="email"
                   type="email"
                   required
-                  placeholder="СИСТЕМНЫЙ EMAIL"
+                  placeholder="Email адрес"
                   value={form.email}
                   onChange={handleChange}
-                  className="w-full bg-background/50 border border-white/10 rounded-xl pl-12 pr-4 py-3.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all font-mono text-sm"
+                  className="w-full bg-surface/50 border border-white/10 rounded-xl pl-12 pr-4 py-4 text-white placeholder:text-slate-500 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all text-sm"
                 />
               </motion.div>
 
@@ -152,10 +152,10 @@ export default function Register() {
                 <input
                   name="phone"
                   type="tel"
-                  placeholder="КАНАЛ СВЯЗИ (+7...)"
+                  placeholder="Номер телефона (+7...)"
                   value={form.phone}
                   onChange={handleChange}
-                  className="w-full bg-background/50 border border-white/10 rounded-xl pl-12 pr-4 py-3.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all font-mono text-sm"
+                  className="w-full bg-surface/50 border border-white/10 rounded-xl pl-12 pr-4 py-4 text-white placeholder:text-slate-500 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all text-sm"
                 />
               </motion.div>
 
@@ -167,10 +167,10 @@ export default function Register() {
                   name="password"
                   type="password"
                   required
-                  placeholder="КОД ДОСТУПА (MIN 6)"
+                  placeholder="Пароль (минимум 6 символов)"
                   value={form.password}
                   onChange={handleChange}
-                  className="w-full bg-background/50 border border-white/10 rounded-xl pl-12 pr-4 py-3.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all font-mono text-sm"
+                  className="w-full bg-surface/50 border border-white/10 rounded-xl pl-12 pr-4 py-4 text-white placeholder:text-slate-500 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all text-sm"
                 />
               </motion.div>
 
@@ -178,26 +178,26 @@ export default function Register() {
                 variants={itemVariants}
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 bg-primary text-background py-4 rounded-xl font-bold tracking-widest text-sm hover:bg-primary/90 transition-all shadow-[0_0_20px_rgba(56,189,248,0.3)] disabled:opacity-50 disabled:cursor-not-allowed group mt-6"
+                className="w-full flex items-center justify-center gap-2 bg-primary text-background py-4 rounded-xl font-bold tracking-wide text-sm hover:bg-primary/90 transition-all shadow-lg hover:shadow-primary/30 disabled:opacity-50 disabled:cursor-not-allowed group mt-6"
               >
                 {loading ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    ИНТЕГРАЦИЯ В СЕТЬ...
+                    Регистрация...
                   </>
                 ) : (
                   <>
-                    <ShieldCheck className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                    ПОЛУЧИТЬ ДОПУСК
+                    <UserPlus className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                    Зарегистрироваться
                   </>
                 )}
               </motion.button>
             </form>
 
-            <motion.p variants={itemVariants} className="text-center text-slate-500 font-mono text-xs mt-8">
-              УЖЕ В СИСТЕМЕ?{' '}
-              <Link href="/auth/login" className="text-primary hover:text-primary/80 transition-colors underline underline-offset-4 decoration-primary/30 hover:decoration-primary">
-                ВОЙТИ В ТЕРМИНАЛ
+            <motion.p variants={itemVariants} className="text-center text-slate-400 text-sm mt-8">
+              Уже есть аккаунт?{' '}
+              <Link href="/auth/login" className="text-primary font-medium hover:text-primary/80 transition-colors">
+                Войти
               </Link>
             </motion.p>
 

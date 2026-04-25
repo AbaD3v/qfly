@@ -33,7 +33,7 @@ export default function Home() {
     <>
       <Head>
         <title>Q'fly — Быстрая доставка дронами в Астане</title>
-        <meta name="description" content="Воздушная доставка посылок до 2 кг в радиусе 15 км. Без пробок и задержек." />
+        <meta name="description" content="Воздушная доставка посылок до 30 кг в радиусе 15 км. Без пробок и задержек." />
       </Head>
 
       <div className="min-h-screen bg-background bg-grid-pattern overflow-hidden selection:bg-primary/30 selection:text-primary">
@@ -65,7 +65,7 @@ export default function Home() {
               </motion.h1>
               
               <motion.p variants={fadeUp} className="text-lg lg:text-xl text-slate-400 mb-10 max-w-lg font-light leading-relaxed">
-                Первый сервис воздушной курьерской доставки. Доставляем посылки до 2 кг за считанные минуты, минуя светофоры и городской трафик.
+                Первый сервис воздушной курьерской доставки. Доставляем посылки до 30 кг за считанные минуты, минуя светофоры и городской трафик.
               </motion.p>
               
               <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-4">

@@ -12,7 +12,8 @@ import {
   Loader2, 
   CheckCircle, 
   AlertTriangle,
-  Save
+  Save,
+  ShieldCheck
 } from 'lucide-react'
 
 export default function Profile() {
@@ -72,7 +73,7 @@ export default function Profile() {
       })
 
     if (updateError) {
-      setError('Ошибка связи с сервером. Повторите попытку.')
+      setError('Не удалось сохранить данные. Пожалуйста, попробуйте еще раз.')
     } else {
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
@@ -90,7 +91,7 @@ export default function Profile() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="w-10 h-10 text-primary animate-spin" />
-          <span className="text-primary/70 font-mono text-sm tracking-widest">СИНХРОНИЗАЦИЯ...</span>
+          <span className="text-slate-400 text-sm font-medium">Загрузка профиля...</span>
         </div>
       </div>
     )
@@ -98,19 +99,18 @@ export default function Profile() {
 
   return (
     <>
-      <Head><title>Профиль оператора — Q'fly</title></Head>
+      <Head><title>Настройки профиля — Q'fly</title></Head>
 
-      {/* Основной контейнер с сеткой на фоне */}
-      <div className="min-h-screen bg-background bg-grid-pattern pb-20">
-        <div className="max-w-2xl mx-auto px-6 pt-24">
+      <div className="min-h-screen bg-background bg-grid-pattern pb-20 pt-24 selection:bg-primary/30">
+        <div className="max-w-2xl mx-auto px-6">
           
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             className="mb-8"
           >
-            <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">Личный терминал</h1>
-            <p className="text-slate-400 font-mono text-sm">ID: {email.split('@')[0] || 'GUEST_MODE'}</p>
+            <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">Профиль</h1>
+            <p className="text-slate-400 text-sm">Управляйте своими личными данными и контактной информацией</p>
           </motion.div>
 
           {/* Карточка пользователя */}
@@ -118,29 +118,48 @@ export default function Profile() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="glass-card rounded-2xl p-6 mb-6 flex items-center gap-5 relative overflow-hidden"
+            className="glass-card rounded-2xl p-6 mb-8 flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-5 relative overflow-hidden border-white/5"
           >
-            <div className="absolute top-0 left-0 w-1 h-full bg-primary neon-glow" />
-            <div className="w-16 h-16 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-              <User className="w-8 h-8" />
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-primary" />
+            
+            <div className="w-20 h-20 shrink-0 rounded-2xl bg-surface border border-white/5 flex items-center justify-center text-primary shadow-sm">
+              <User className="w-10 h-10" />
             </div>
-            <div>
-              <p className="font-semibold text-white text-lg">
-                {form.full_name || 'Позывной не задан'}
+            
+            <div className="flex-1 mt-1">
+              <p className="font-bold text-white text-xl mb-1">
+                {form.full_name || 'Имя не указано'}
               </p>
-              <p className="text-primary/80 font-mono text-sm">{email}</p>
+              <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-slate-400 text-sm">
+                <span className="flex items-center gap-1.5">
+                  <Mail className="w-4 h-4 text-slate-500" />
+                  {email}
+                </span>
+                {form.phone && (
+                  <span className="flex items-center gap-1.5">
+                    <Phone className="w-4 h-4 text-slate-500" />
+                    {form.phone}
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-green-500 bg-green-500/10 px-3 py-1.5 rounded-lg border border-green-500/20">
+              <ShieldCheck className="w-4 h-4" />
+              Аккаунт подтвержден
             </div>
           </motion.div>
 
           {/* Уведомления */}
-          <div className="h-14 mb-4">
-            <AnimatePresence>
+          <div className="mb-6">
+            <AnimatePresence mode="wait">
               {error && (
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="bg-accent/10 border border-accent/30 text-accent text-sm px-4 py-3 rounded-xl flex items-center gap-3 backdrop-blur-sm"
+                  key="error"
+                  initial={{ opacity: 0, height: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                  exit={{ opacity: 0, height: 0, scale: 0.95 }}
+                  className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-xl flex items-center gap-3 backdrop-blur-sm"
                 >
                   <AlertTriangle className="w-5 h-5 shrink-0" />
                   {error}
@@ -148,13 +167,14 @@ export default function Profile() {
               )}
               {success && (
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="bg-success/10 border border-success/30 text-success text-sm px-4 py-3 rounded-xl flex items-center gap-3 backdrop-blur-sm"
+                  key="success"
+                  initial={{ opacity: 0, height: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                  exit={{ opacity: 0, height: 0, scale: 0.95 }}
+                  className="bg-green-500/10 border border-green-500/20 text-green-400 text-sm px-4 py-3 rounded-xl flex items-center gap-3 backdrop-blur-sm"
                 >
                   <CheckCircle className="w-5 h-5 shrink-0" />
-                  Протокол обновлен: данные сохранены
+                  Изменения успешно сохранены
                 </motion.div>
               )}
             </AnimatePresence>
@@ -166,16 +186,17 @@ export default function Profile() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
             onSubmit={handleSubmit} 
-            className="glass-card rounded-2xl p-6 space-y-6"
+            className="glass-card rounded-[2rem] p-8 space-y-6 border-white/5 shadow-xl"
           >
-            <h2 className="font-semibold text-white/90 text-lg flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              Конфигурация профиля
+            <h2 className="font-bold text-white/90 text-lg flex items-center gap-2 border-b border-white/5 pb-4">
+              Личные данные
             </h2>
 
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="relative group">
-                <label className="block text-xs font-mono text-slate-400 mb-1.5">ПОЛНОЕ ИМЯ</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                  Полное имя
+                </label>
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
                   <input
@@ -184,13 +205,15 @@ export default function Profile() {
                     placeholder="Алибек Сейткали"
                     value={form.full_name}
                     onChange={handleChange}
-                    className="w-full bg-background/50 border border-white/5 rounded-xl pl-12 pr-4 py-3 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
+                    className="w-full bg-surface/50 border border-white/10 rounded-xl pl-12 pr-4 py-3.5 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all shadow-sm"
                   />
                 </div>
               </div>
 
               <div className="relative group">
-                <label className="block text-xs font-mono text-slate-400 mb-1.5">ТЕЛЕФОН СВЯЗИ</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                  Номер телефона
+                </label>
                 <div className="relative">
                   <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
                   <input
@@ -199,30 +222,32 @@ export default function Profile() {
                     placeholder="+7 777 000 00 00"
                     value={form.phone}
                     onChange={handleChange}
-                    className="w-full bg-background/50 border border-white/5 rounded-xl pl-12 pr-4 py-3 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
+                    className="w-full bg-surface/50 border border-white/10 rounded-xl pl-12 pr-4 py-3.5 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all shadow-sm"
                   />
                 </div>
               </div>
 
               <div className="relative group">
-                <label className="block text-xs font-mono text-slate-400 mb-1.5">
-                  БАЗОВЫЙ АДРЕС (АСТАНА)
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                  Домашний адрес
                 </label>
                 <div className="relative">
                   <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-primary transition-colors" />
                   <input
                     name="address"
                     type="text"
-                    placeholder="ул. Достык 1"
+                    placeholder="Астана, ул. Достык 1"
                     value={form.address}
                     onChange={handleChange}
-                    className="w-full bg-background/50 border border-white/5 rounded-xl pl-12 pr-4 py-3 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all"
+                    className="w-full bg-surface/50 border border-white/10 rounded-xl pl-12 pr-4 py-3.5 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all shadow-sm"
                   />
                 </div>
               </div>
 
-              <div className="relative opacity-70">
-                <label className="block text-xs font-mono text-slate-400 mb-1.5">СИСТЕМНЫЙ EMAIL</label>
+              <div className="relative opacity-60 pointer-events-none">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                  Email (Логин)
+                </label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
                   <input
@@ -235,23 +260,25 @@ export default function Profile() {
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full flex items-center justify-center gap-2 bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 hover:neon-glow py-3.5 rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  ПРИМЕНЕНИЕ...
-                </>
-              ) : (
-                <>
-                  <Save className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                  СОХРАНИТЬ КОНФИГУРАЦИЮ
-                </>
-              )}
-            </button>
+            <div className="pt-4 border-t border-white/5">
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full flex items-center justify-center gap-2 bg-primary text-background hover:bg-primary/90 hover:scale-[1.02] py-4 rounded-xl font-bold tracking-wide transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-lg shadow-primary/20"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Сохранение...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-5 h-5" />
+                    Сохранить изменения
+                  </>
+                )}
+              </button>
+            </div>
           </motion.form>
 
           {/* Danger zone */}
@@ -259,16 +286,17 @@ export default function Profile() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="mt-6 glass-card rounded-2xl p-6 border-red-500/10"
+            className="mt-8 text-center"
           >
             <button
               onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-2 border border-accent/20 text-accent/80 hover:text-accent hover:bg-accent/10 py-3.5 rounded-xl font-medium transition-all"
+              className="inline-flex items-center justify-center gap-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 px-6 py-3 rounded-xl font-medium transition-colors"
             >
               <LogOut className="w-5 h-5" />
-              ОТКЛЮЧИТЬСЯ ОТ СЕТИ
+              Выйти из аккаунта
             </button>
           </motion.div>
+          
         </div>
       </div>
     </>
