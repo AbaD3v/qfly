@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { load } from '@2gis/mapgl';
 import { supabase } from '@/lib/supabase';
-import { Terminal, Battery, Loader2, Search, Package, CheckCircle2, XCircle } from 'lucide-react';
+import { Terminal, Battery, Loader2, Search, Package, CheckCircle2, XCircle, Navigation } from 'lucide-react';
 
 interface DeliveryMapProps {
   orderId?: string;
@@ -9,13 +9,6 @@ interface DeliveryMapProps {
   staticEnd?: [number, number];
 }
 
-// Реалистичные параметры дрона
-const DRONE_SPEED_KMH = 60          // крейсерская скорость км/ч
-const FRAME_INTERVAL_MS = 100       // обновление позиции каждые 100мс
-const MIN_FLIGHT_MS = 30_000        // минимум 30 секунд (для коротких маршрутов)
-const MAX_FLIGHT_MS = 10 * 60_000   // максимум 10 минут
-
-// Haversine — прямое расстояние между двумя точками в км
 function haversineKm(lon1: number, lat1: number, lon2: number, lat2: number): number {
   const R = 6371;
   const dLat = (lat2 - lat1) * (Math.PI / 180);
@@ -26,29 +19,23 @@ function haversineKm(lon1: number, lat1: number, lon2: number, lat2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Считаем реалистичное время полёта в мс
-function calcFlightDurationMs(start: [number, number], end: [number, number]): number {
-  const distKm = haversineKm(start[0], start[1], end[0], end[1]);
-  const rawMs = (distKm / DRONE_SPEED_KMH) * 3600 * 1000;
-  return Math.min(MAX_FLIGHT_MS, Math.max(MIN_FLIGHT_MS, rawMs));
-}
-
 export default function DeliveryMap({ orderId, staticStart, staticEnd }: DeliveryMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const mapglRef = useRef<any>(null);
   const droneMarker = useRef<any>(null);
   const routeLineRef = useRef<any>(null);
-  const animFrameRef = useRef<NodeJS.Timeout | null>(null);
-  const startTimeRef = useRef<number | null>(null);
-  const flightDurationRef = useRef<number>(MIN_FLIGHT_MS);
+
+  // Для подсчёта прогресса на основе реальных координат
+  const droneIdRef = useRef<string | null>(null);
+  const prevPosRef = useRef<[number, number] | null>(null);
+  const totalDistRef = useRef<number>(0);
+  const travelledRef = useRef<number>(0);
 
   const [logs, setLogs] = useState<string[]>([]);
   const [telemetry, setTelemetry] = useState({ alt: 0, speed: 0, battery: 100, progress: 0 });
   const [isMapLoading, setIsMapLoading] = useState(true);
   const [isFlying, setIsFlying] = useState(false);
-
-  // Стейты для жизненного цикла заказа и PIN-кода
   const [currentStatus, setCurrentStatus] = useState<string>('pending');
   const [correctPin, setCorrectPin] = useState<string | null>(null);
   const [pinInput, setPinInput] = useState('');
@@ -56,109 +43,95 @@ export default function DeliveryMap({ orderId, staticStart, staticEnd }: Deliver
   const [isUnlocking, setIsUnlocking] = useState(false);
 
   const addLog = useCallback((message: string) => {
-    const timestamp = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const timestamp = new Date().toLocaleTimeString('ru-RU', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
     setLogs(prev => [...prev.slice(-4), `[${timestamp}] ${message}`]);
   }, []);
 
-const animateFlight = useCallback((
-    start: [number, number],
-    end: [number, number],
-    mapgl: any
-  ) => {
-    if (animFrameRef.current) clearInterval(animFrameRef.current);
-
-    const durationMs = calcFlightDurationMs(start, end);
-    flightDurationRef.current = durationMs;
-    startTimeRef.current = Date.now();
-    setIsFlying(true);
-
-    const distKm = haversineKm(start[0], start[1], end[0], end[1]);
-    const etaMin = Math.round(durationMs / 60000);
-
-    addLog(`ВЗЛЁТ: ${distKm.toFixed(2)} КМ — ETA ${etaMin} МИН`);
-
-    if (routeLineRef.current) routeLineRef.current.destroy();
-    if (staticStart && staticEnd) {
-      routeLineRef.current = new mapgl.Polyline(mapInstance.current, {
-        coordinates: [staticStart, staticEnd],
-        color: '#38bdf840',
-        width: 1.5,
-        dashLength: 4,
-        gapLength: 8,
-      });
+  // Двигаем маркер дрона по данным из БД — никакой локальной анимации
+  const updateDronePosition = useCallback((lon: number, lat: number, battery?: number) => {
+    if (droneMarker.current) {
+      droneMarker.current.setCoordinates([lon, lat]);
+    }
+    if (mapInstance.current) {
+      // Плавный сдвиг камеры к новой позиции (движок пишет каждые 2с)
+      mapInstance.current.setCenter([lon, lat], { duration: 1800 });
     }
 
-    // Делаем коллбэк асинхронным, чтобы можно было использовать await
-    animFrameRef.current = setInterval(async () => {
-      const elapsed = Date.now() - (startTimeRef.current ?? Date.now());
-      const f = Math.min(elapsed / durationMs, 1);
+    // Считаем пройденное расстояние для прогресс-бара
+    if (prevPosRef.current) {
+      const step = haversineKm(prevPosRef.current[0], prevPosRef.current[1], lon, lat);
+      travelledRef.current += step;
+    }
+    prevPosRef.current = [lon, lat];
 
-      const eased = f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
+    const progress = totalDistRef.current > 0
+      ? Math.min(100, Math.round((travelledRef.current / totalDistRef.current) * 100))
+      : 0;
 
-      const curLon = start[0] + (end[0] - start[0]) * eased;
-      const curLat = start[1] + (end[1] - start[1]) * eased;
+    setTelemetry(prev => ({
+      battery: battery ?? prev.battery,
+      progress,
+      alt: Math.round(Math.sin((progress / 100) * Math.PI) * 150),
+      speed: progress > 5 && progress < 95
+        ? Math.round(60 + (Math.random() - 0.5) * 6)
+        : Math.round(30 * (progress < 5 ? progress / 5 : (100 - progress) / 5)),
+    }));
+  }, []);
 
-      const altM = Math.round(Math.sin(f * Math.PI) * 150);
-      const speed = f < 0.05 || f > 0.95
-        ? Math.round(DRONE_SPEED_KMH * f * 20)
-        : Math.round(DRONE_SPEED_KMH + (Math.random() - 0.5) * 6);
-      const battery = Math.round(100 - f * 25);
-      const progress = Math.round(f * 100);
-
-      if (droneMarker.current) droneMarker.current.setCoordinates([curLon, curLat]);
-      if (mapInstance.current) mapInstance.current.setCenter([curLon, curLat], { duration: FRAME_INTERVAL_MS });
-
-      setTelemetry({ alt: altM, speed, battery, progress });
-
-      // Когда дрон прилетел (прогресс 100%)
-      if (f >= 1) {
-        clearInterval(animFrameRef.current!);
-        animFrameRef.current = null;
-        setTelemetry(prev => ({ ...prev, speed: 0, alt: 0, progress: 100 }));
-        
-        // 1. Сообщаем в лог, что садимся
-        addLog('СИСТЕМА: ПОСАДКА. СИНХРОНИЗАЦИЯ С БАЗОЙ...');
-
-        // 2. АВТОМАТИЧЕСКИ обновляем статус в Supabase на 'arrived'
-        if (orderId) {
-          const { error } = await supabase
-            .from('orders')
-            .update({ status: 'arrived' })
-            .eq('id', orderId);
-            
-          if (error) {
-            addLog('ОШИБКА: СБОЙ СИНХРОНИЗАЦИИ САТУСА');
-            setIsFlying(false); // Выключаем полет вручную на случай ошибки
-          }
-          // Если ошибки нет, Realtime-подписка сама переключит всё остальное!
-        }
+  const handleStatusChange = useCallback((status: string, data: any) => {
+    setCurrentStatus(status);
+    
+    if (status === 'pending') {
+      addLog('СИСТЕМА: ПОИСК СВОБОДНОГО ДРОНА...');
+    }
+    if (status === 'to_pickup') {
+      addLog('СТАТУС: ДРОН НАЗНАЧЕН. СЛЕДУЕТ К МЕСТУ ПОГРУЗКИ...');
+    }
+    if (status === 'loading') {
+      addLog('СТАТУС: ПОГРУЗКА БОРТА НА БАЗЕ');
+    }
+    if (status === 'in_transit') {
+      addLog('ВЗЛЁТ: ДРОН В ВОЗДУХЕ. СЛЕЖЕНИЕ АКТИВНО');
+      setIsFlying(true);
+      travelledRef.current = 0;
+      prevPosRef.current = null;
+      if (data.from_lon && data.to_lon) {
+        totalDistRef.current = haversineKm(data.from_lon, data.from_lat, data.to_lon, data.to_lat);
       }
-    }, FRAME_INTERVAL_MS);
+    }
+    if (status === 'arrived') {
+      addLog('СТАТУС: ДРОН ПРИБЫЛ. ОЖИДАЕТСЯ ИЗЪЯТИЕ ГРУЗА');
+      setIsFlying(false);
+      setTelemetry(prev => ({ ...prev, speed: 0, alt: 0, progress: 100 }));
+      if (droneMarker.current && data.to_lon) {
+        droneMarker.current.setCoordinates([data.to_lon, data.to_lat]);
+      }
+    }
+    if (status === 'delivered') {
+      addLog('МИССИЯ ЗАВЕРШЕНА. ГРУЗ ПЕРЕДАН');
+      routeLineRef.current?.destroy();
+      setIsFlying(false);
+    }
+    if (status === 'cancelled') {
+      addLog('КРИТИЧЕСКАЯ ОШИБКА: МИССИЯ ПРЕРВАНА');
+      setIsFlying(false);
+    }
+  }, [addLog]);
 
-    // ВАЖНО: Добавляем orderId в массив зависимостей хука useCallback
-  }, [addLog, staticStart, staticEnd, orderId]);
-
-  // Обработка отправки PIN-кода
   const handlePinSubmit = async () => {
     if (pinInput.length !== 4) return;
-    
     setIsUnlocking(true);
     setPinError(false);
-
-    // Имитация небольшой задержки для реалистичности
-    await new Promise(resolve => setTimeout(resolve, 800));
-
+    await new Promise(r => setTimeout(r, 800));
+    
     if (pinInput === correctPin) {
       addLog('СИСТЕМА: PIN ПРИНЯТ. ОТКРЫТИЕ ЗАМКА...');
-      
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: 'delivered' })
-        .eq('id', orderId);
-        
-      if (error) {
-        addLog('ОШИБКА: СБОЙ СВЯЗИ С БАЗОЙ ДАННЫХ');
-        setPinError(true);
+      const { error } = await supabase.from('orders').update({ status: 'delivered' }).eq('id', orderId);
+      if (error) { 
+        addLog('ОШИБКА: СБОЙ СВЯЗИ'); 
+        setPinError(true); 
       }
     } else {
       addLog('ОШИБКА: НЕВЕРНЫЙ PIN-КОД');
@@ -171,57 +144,38 @@ const animateFlight = useCallback((
   useEffect(() => {
     if (!mapContainerRef.current) return;
     let destroyed = false;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let orderChannel: ReturnType<typeof supabase.channel> | null = null;
+    let droneChannel: ReturnType<typeof supabase.channel> | null = null;
 
-    const handleStatusChange = (status: string, data: any, mapgl: any) => {
-      setCurrentStatus(status);
-
-      if (status === 'pending') {
-        addLog('СИСТЕМА: ПОИСК СВОБОДНОГО ДРОНА...');
-      } 
-      else if (status === 'loading') {
-        addLog('СТАТУС: ПОГРУЗКА БОРТА НА БАЗЕ');
-        if (droneMarker.current && data.from_lon && data.from_lat) {
-          droneMarker.current.setCoordinates([data.from_lon, data.from_lat]);
-        }
-      } 
-      else if (status === 'in_transit') {
-        const start: [number, number] = [data.from_lon, data.from_lat];
-        const end: [number, number] = [data.to_lon, data.to_lat];
-        animateFlight(start, end, mapgl);
-      } 
-      else if (status === 'arrived') {
-        addLog('СТАТУС: ДРОН ПРИБЫЛ. ОЖИДАЕТСЯ ИЗЪЯТИЕ ГРУЗА');
-        if (animFrameRef.current) clearInterval(animFrameRef.current);
-        setIsFlying(false);
-        if (droneMarker.current && data.to_lon && data.to_lat) {
-          droneMarker.current.setCoordinates([data.to_lon, data.to_lat]);
-        }
-      } 
-      else if (status === 'delivered') {
-        addLog('МИССИЯ ЗАВЕРШЕНА. ГРУЗ ПЕРЕДАН');
-        routeLineRef.current?.destroy();
-        setIsFlying(false);
-      } 
-      else if (status === 'cancelled') {
-        addLog('КРИТИЧЕСКАЯ ОШИБКА: МИССИЯ ПРЕРВАНА');
-        if (animFrameRef.current) clearInterval(animFrameRef.current);
-        setIsFlying(false);
-      }
+    // Подписка на позицию дрона — отдельный канал, пересоздаётся при смене дрона
+    const subscribeToDrone = (droneId: string) => {
+      if (droneChannel) supabase.removeChannel(droneChannel);
+      droneChannel = supabase
+        .channel(`drone-pos-${droneId}`)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'drones',
+          filter: `id=eq.${droneId}`,
+        }, (payload) => {
+          if (destroyed) return;
+          const { current_lon, current_lat, battery } = payload.new;
+          if (current_lon && current_lat) {
+            updateDronePosition(current_lon, current_lat, battery);
+          }
+        })
+        .subscribe();
     };
 
     const initSystem = async () => {
       try {
         const mapgl = await load();
         if (destroyed || !mapContainerRef.current) return;
-
         mapglRef.current = mapgl;
-        const center = staticStart ?? [71.446, 51.1801];
 
+        const center = staticStart ?? [71.446, 51.1801];
         mapInstance.current = new mapgl.Map(mapContainerRef.current, {
-          center,
-          zoom: 14,
-          pitch: 45,
+          center, zoom: 14, pitch: 45,
           key: process.env.NEXT_PUBLIC_2GIS_API_KEY as string,
           style: 'c080bb6a-8134-4993-93d0-3e9e1f1f1311',
         });
@@ -233,94 +187,96 @@ const animateFlight = useCallback((
 
         if (staticStart) {
           new mapgl.HtmlMarker(mapInstance.current, {
-            coordinates: staticStart,
-            html: pointMarkerHtml('А', '#38bdf8'),
-            anchor: [0.5, 1],
+            coordinates: staticStart, html: pointMarkerHtml('А', '#38bdf8'), anchor: [0.5, 1],
           });
         }
         if (staticEnd) {
           new mapgl.HtmlMarker(mapInstance.current, {
-            coordinates: staticEnd,
-            html: pointMarkerHtml('Б', '#f43f5e'),
-            anchor: [0.5, 1],
+            coordinates: staticEnd, html: pointMarkerHtml('Б', '#f43f5e'), anchor: [0.5, 1],
           });
         }
-
         if (staticStart && staticEnd) {
           routeLineRef.current = new mapgl.Polyline(mapInstance.current, {
             coordinates: [staticStart, staticEnd],
-            color: '#38bdf840',
-            width: 1.5,
-            dashLength: 4,
-            gapLength: 8,
+            color: '#38bdf825', width: 1.5, dashLength: 4, gapLength: 8,
           });
-
-          const minLon = Math.min(staticStart[0], staticEnd[0]);
-          const maxLon = Math.max(staticStart[0], staticEnd[0]);
-          const minLat = Math.min(staticStart[1], staticEnd[1]);
-          const maxLat = Math.max(staticStart[1], staticEnd[1]);
           mapInstance.current.fitBounds(
-            { northEast: [maxLon, maxLat], southWest: [minLon, minLat] },
+            {
+              northEast: [Math.max(staticStart[0], staticEnd[0]), Math.max(staticStart[1], staticEnd[1])],
+              southWest: [Math.min(staticStart[0], staticEnd[0]), Math.min(staticStart[1], staticEnd[1])],
+            },
             { padding: 80, duration: 800 }
           );
         }
 
         setIsMapLoading(false);
 
-        if (orderId) {
-          const { data: order, error } = await supabase
-            .from('orders')
-            .select('status, from_lon, from_lat, to_lon, to_lat, pin_code')
-            .eq('id', orderId)
-            .single();
+        if (!orderId) { addLog('СИСТЕМА МОНИТОРИНГА: ОЖИДАНИЕ СИГНАЛА...'); return; }
 
-          if (order && !destroyed) {
-            setCorrectPin(order.pin_code);
-            handleStatusChange(order.status, order, mapgl);
+        // Загружаем текущий заказ из БД
+        const { data: order } = await supabase
+          .from('orders')
+          .select('status, from_lon, from_lat, to_lon, to_lat, pin_code, drone_id')
+          .eq('id', orderId)
+          .single();
+
+        if (!order || destroyed) return;
+        setCorrectPin(order.pin_code);
+        handleStatusChange(order.status, order);
+
+        // Если дрон уже назначен — ставим его позицию и подписываемся
+        if (order.drone_id) {
+          droneIdRef.current = order.drone_id;
+          const { data: drone } = await supabase
+            .from('drones')
+            .select('current_lon, current_lat, battery')
+            .eq('id', order.drone_id)
+            .single();
+          if (drone && !destroyed) {
+            droneMarker.current?.setCoordinates([drone.current_lon, drone.current_lat]);
+            setTelemetry(prev => ({ ...prev, battery: drone.battery ?? 100 }));
           }
-        } else {
-          addLog('СИСТЕМА МОНИТОРИНГА: ОЖИДАНИЕ СИГНАЛА...');
+          subscribeToDrone(order.drone_id);
         }
 
+        // Подписка на изменения самого заказа (статус, drone_id)
+        orderChannel = supabase
+          .channel(`order-status-${orderId}`)
+          .on('postgres_changes', {
+            event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${orderId}`,
+          }, (payload) => {
+            if (destroyed) return;
+            const d = payload.new;
+            if (d.pin_code) setCorrectPin(d.pin_code);
+            handleStatusChange(d.status, d);
+            // Дрон только что назначен движком — начинаем следить за ним
+            if (d.drone_id && d.drone_id !== droneIdRef.current) {
+              droneIdRef.current = d.drone_id;
+              subscribeToDrone(d.drone_id);
+            }
+          })
+          .subscribe();
+
       } catch (err) {
-        console.error("Ошибка инициализации карты:", err);
+        console.error('Ошибка инициализации карты:', err);
       }
     };
 
     initSystem();
 
-    if (orderId) {
-      channel = supabase
-        .channel(`tracking-${orderId}`)
-        .on('postgres_changes', {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'orders',
-          filter: `id=eq.${orderId}`,
-        }, (payload) => {
-          const mapgl = mapglRef.current;
-          if (!mapgl) return;
-          
-          if (payload.new.pin_code) setCorrectPin(payload.new.pin_code);
-          handleStatusChange(payload.new.status, payload.new, mapgl);
-        })
-        .subscribe();
-    }
-
     return () => {
       destroyed = true;
-      if (animFrameRef.current) clearInterval(animFrameRef.current);
       routeLineRef.current?.destroy();
       mapInstance.current?.destroy();
       mapInstance.current = null;
       mapglRef.current = null;
-      if (channel) supabase.removeChannel(channel);
+      if (orderChannel) supabase.removeChannel(orderChannel);
+      if (droneChannel) supabase.removeChannel(droneChannel);
     };
-  }, [orderId, staticStart, staticEnd, animateFlight, addLog]);
+  }, [orderId, staticStart, staticEnd, handleStatusChange, updateDronePosition, addLog]);
 
   return (
     <div className="relative w-full h-[500px] bg-slate-950 rounded-[2.5rem] overflow-hidden border border-white/5 shadow-2xl">
-
       <div ref={mapContainerRef} className="w-full h-full opacity-90" />
 
       {isMapLoading && (
@@ -349,25 +305,23 @@ const animateFlight = useCallback((
         </div>
       </div>
 
-      {/* Прогресс-бар полёта */}
+      {/* Прогресс (только в полете) */}
       {isFlying && (
-        <div className="absolute top-6 left-6 right-32 z-10 mr-6">
+        <div className="absolute top-6 left-6 right-44 z-10">
           <div className="bg-black/50 backdrop-blur-md border border-white/10 px-4 py-2.5 rounded-xl">
             <div className="flex justify-between items-center mb-1.5">
               <span className="text-[9px] font-mono text-primary uppercase tracking-widest animate-pulse">В ПОЛЁТЕ</span>
               <span className="text-[9px] font-mono text-slate-400">{telemetry.progress}%</span>
             </div>
             <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary rounded-full transition-all shadow-[0_0_8px_rgba(56,189,248,0.6)]"
-                style={{ width: `${telemetry.progress}%` }}
-              />
+              <div className="h-full bg-primary rounded-full transition-all shadow-[0_0_8px_rgba(56,189,248,0.6)]"
+                style={{ width: `${telemetry.progress}%` }} />
             </div>
           </div>
         </div>
       )}
 
-      {/* Консоль логов */}
+      {/* Консоль */}
       <div className="absolute bottom-6 left-6 z-10 w-72">
         <div className="bg-black/60 backdrop-blur-xl border border-primary/20 p-4 rounded-2xl">
           <div className="flex items-center gap-2 mb-2.5 text-primary font-mono text-[9px] uppercase tracking-[0.2em]">
@@ -385,8 +339,7 @@ const animateFlight = useCallback((
         </div>
       </div>
 
-      {/* --- ИНТЕРФЕЙС НАБЛЮДАТЕЛЯ (UI ОВЕРЛЕИ) --- */}
-
+      {/* Статус: pending */}
       {currentStatus === 'pending' && (
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
           <div className="bg-slate-900/80 backdrop-blur-md border border-primary/30 px-6 py-3 rounded-full flex items-center gap-3 shadow-[0_0_20px_rgba(56,189,248,0.2)]">
@@ -396,15 +349,27 @@ const animateFlight = useCallback((
         </div>
       )}
 
+      {/* Статус: to_pickup */}
+      {currentStatus === 'to_pickup' && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
+          <div className="bg-slate-900/80 backdrop-blur-md border border-indigo-500/30 px-6 py-3 rounded-full flex items-center gap-3 shadow-[0_0_20px_rgba(99,102,241,0.2)]">
+            <Navigation className="w-5 h-5 text-indigo-400 animate-pulse" />
+            <span className="text-sm font-mono text-white tracking-wide">Дрон направляется к месту погрузки...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Статус: loading */}
       {currentStatus === 'loading' && (
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
-          <div className="bg-slate-900/80 backdrop-blur-md border border-yellow-500/30 px-6 py-3 rounded-full flex items-center gap-3 shadow-[0_0_20px_rgba(234,179,8,0.2)]">
+          <div className="bg-slate-900/80 backdrop-blur-md border border-yellow-500/30 px-6 py-3 rounded-full flex items-center gap-3 shadow-[0_0_20px_rgba(234,179,8,0.15)]">
             <Package className="w-5 h-5 text-yellow-500 animate-bounce" />
             <span className="text-sm font-mono text-white tracking-wide">Загрузка посылки в дрон...</span>
           </div>
         </div>
       )}
 
+      {/* Статус: arrived — PIN ввод */}
       {currentStatus === 'arrived' && (
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-center justify-center">
           <div className="bg-slate-900 border border-primary/30 p-8 rounded-3xl shadow-2xl flex flex-col items-center w-80 text-center">
@@ -412,60 +377,35 @@ const animateFlight = useCallback((
               <span className="text-primary animate-pulse text-2xl">📦</span>
             </div>
             <h3 className="text-white text-lg font-bold mb-1">Груз прибыл</h3>
-            <p className="text-slate-400 text-sm mb-6">Введите 4-значный код из вашего приложения для открытия отсека.</p>
-
+            <p className="text-slate-400 text-sm mb-6">Введите 4-значный код из вашего приложения.</p>
             <div className="flex gap-3 mb-6 relative">
               {[0, 1, 2, 3].map((index) => (
-                <div 
-                  key={index}
-                  className={`w-12 h-14 rounded-xl flex items-center justify-center text-2xl font-mono font-bold
-                    ${pinInput[index] ? 'bg-primary text-slate-950 shadow-[0_0_15px_rgba(56,189,248,0.5)]' : 'bg-slate-800 text-slate-500 border border-white/5'}
-                    ${pinError ? 'border-red-500 bg-red-500/10 text-red-500' : ''}
-                  `}
-                >
+                <div key={index} className={`w-12 h-14 rounded-xl flex items-center justify-center text-2xl font-mono font-bold
+                  ${pinInput[index] ? 'bg-primary text-slate-950 shadow-[0_0_15px_rgba(56,189,248,0.5)]' : 'bg-slate-800 text-slate-500 border border-white/5'}
+                  ${pinError ? 'border-red-500 bg-red-500/10 text-red-500' : ''}`}>
                   {pinInput[index] || '•'}
                 </div>
               ))}
-              
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={4}
-                value={pinInput}
-                onChange={(e) => {
-                  setPinError(false);
-                  setPinInput(e.target.value.replace(/\D/g, ''));
-                }}
-                className="absolute inset-0 opacity-0 cursor-text w-full h-full"
-              />
+              <input type="text" inputMode="numeric" maxLength={4} value={pinInput}
+                onChange={(e) => { setPinError(false); setPinInput(e.target.value.replace(/\D/g, '')); }}
+                className="absolute inset-0 opacity-0 cursor-text w-full h-full" />
             </div>
-
-            <button
-              onClick={handlePinSubmit}
-              disabled={pinInput.length !== 4 || isUnlocking}
+            <button onClick={handlePinSubmit} disabled={pinInput.length !== 4 || isUnlocking}
               className={`w-full py-3 rounded-xl font-bold uppercase tracking-wider transition-all
                 ${pinInput.length === 4 && !isUnlocking
-                  ? 'bg-primary text-slate-950 hover:bg-primary/90 shadow-[0_0_20px_rgba(56,189,248,0.4)]' 
-                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'}
-              `}
-            >
-              {isUnlocking ? (
-                <Loader2 className="w-5 h-5 mx-auto animate-spin" />
-              ) : (
-                'Разблокировать'
-              )}
+                  ? 'bg-primary text-slate-950 hover:bg-primary/90 shadow-[0_0_20px_rgba(56,189,248,0.4)]'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>
+              {isUnlocking ? <Loader2 className="w-5 h-5 mx-auto animate-spin" /> : 'Разблокировать'}
             </button>
-            
-            {pinError && (
-              <span className="text-red-400 text-xs mt-3 animate-pulse">Доступ запрещен. Попробуйте еще раз.</span>
-            )}
+            {pinError && <span className="text-red-400 text-xs mt-3 animate-pulse">Доступ запрещен.</span>}
           </div>
         </div>
       )}
 
+      {/* Статус: delivered */}
       {currentStatus === 'delivered' && (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-slate-900 border border-green-500/30 p-8 rounded-3xl shadow-[0_0_40px_rgba(34,197,94,0.2)] flex flex-col items-center w-80 text-center transform transition-all scale-100">
+          <div className="bg-slate-900 border border-green-500/30 p-8 rounded-3xl shadow-[0_0_40px_rgba(34,197,94,0.2)] flex flex-col items-center w-80 text-center">
             <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mb-4">
               <CheckCircle2 className="w-10 h-10 text-green-500" />
             </div>
@@ -475,23 +415,22 @@ const animateFlight = useCallback((
         </div>
       )}
 
+      {/* Статус: cancelled */}
       {currentStatus === 'cancelled' && (
         <div className="absolute inset-0 bg-red-950/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-slate-900 border border-red-500/50 p-8 rounded-3xl shadow-[0_0_40px_rgba(239,68,68,0.4)] flex flex-col items-center w-80 text-center">
+          <div className="bg-slate-900 border border-red-500/50 p-8 rounded-3xl flex flex-col items-center w-80 text-center">
             <XCircle className="w-16 h-16 text-red-500 mb-4 animate-pulse" />
             <h3 className="text-white text-xl font-bold mb-2">Миссия прервана</h3>
-            <p className="text-slate-400 text-sm">Полет отменен. Свяжитесь со службой поддержки для уточнения деталей.</p>
+            <p className="text-slate-400 text-sm">Свяжитесь со службой поддержки.</p>
           </div>
         </div>
       )}
 
-      {/* Уголки видоискателя */}
+      {/* Уголки */}
       <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-primary/30 pointer-events-none rounded-tl-lg" />
       <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-primary/30 pointer-events-none rounded-tr-lg" />
       <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-primary/30 pointer-events-none rounded-bl-lg" />
       <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-primary/30 pointer-events-none rounded-br-lg" />
-
-      {/* Виньетка */}
       <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_100px_rgba(0,0,0,0.4)]" />
     </div>
   );
@@ -500,14 +439,9 @@ const animateFlight = useCallback((
 function pointMarkerHtml(label: string, color: string): string {
   return `
     <div style="display:flex;flex-direction:column;align-items:center;">
-      <div style="
-        width:26px;height:26px;
-        border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);
-        background:${color};
-        box-shadow:0 0 12px ${color}80;
-        display:flex;align-items:center;justify-content:center;
-      ">
+      <div style="width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+        background:${color};box-shadow:0 0 12px ${color}80;
+        display:flex;align-items:center;justify-content:center;">
         <span style="transform:rotate(45deg);color:#080f1e;font-size:10px;font-weight:900;font-family:monospace;">${label}</span>
       </div>
       <div style="width:2px;height:5px;background:${color};opacity:0.4;"></div>

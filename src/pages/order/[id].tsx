@@ -33,18 +33,24 @@ type Order = {
   to_lat: number
   to_lon: number
   weight: number
-  status: 'pending' | 'loading' | 'in_transit' | 'arrived' | 'delivered' | 'cancelled'
+  status: 'pending' | 'to_pickup' | 'loading' | 'in_transit' | 'arrived' | 'delivered' | 'cancelled'
   price: number
   created_at: string
 }
 
-// Эталонный маршрут миссии (5 шагов)
+// Эталонный маршрут миссии (теперь 6 шагов)
 const STEPS = [
   { 
     key: 'pending', 
     label: 'ПОИСК', 
     icon: Search, 
     desc: 'Ожидайте. Система сканирует сеть, чтобы закрепить за вашим заказом ближайший дрон.' 
+  },
+  { 
+    key: 'to_pickup', 
+    label: 'ПОДЛЕТ', 
+    icon: Navigation, 
+    desc: 'Дрон закреплен за заказом и направляется к месту погрузки. Ожидайте прибытия борта.' 
   },
   { 
     key: 'loading', 
@@ -93,29 +99,29 @@ export default function OrderTracking() {
     if (!id) return
 
     // Обновляем запрос загрузки заказа
-const fetchOrder = async () => {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) { router.push('/auth/login'); return }
+    const fetchOrder = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.push('/auth/login'); return }
 
-  const { data, error } = await supabase
-    .from('orders')
-    .select(`
-      *,
-      drones (
-        callsign,
-        model,
-        battery_level,
-        max_payload_kg
-      )
-    `) // Подтягиваем данные дрона через связь drone_id
-    .eq('id', id)
-    .eq('user_id', user.id)
-    .single()
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          drones (
+            callsign,
+            model,
+            battery_level,
+            max_payload_kg
+          )
+        `) // Подтягиваем данные дрона через связь drone_id
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single()
 
-  if (error || !data) setNotFound(true)
-  else setOrder(data)
-  setLoading(false)
-}
+      if (error || !data) setNotFound(true)
+      else setOrder(data)
+      setLoading(false)
+    }
 
     fetchOrder()
 
@@ -168,10 +174,11 @@ const fetchOrder = async () => {
   // Вычисляем индекс текущего шага на основе статуса из БД
   const stepIndexMap: Record<string, number> = {
     'pending': 0,
-    'loading': 1,
-    'in_transit': 2,
-    'arrived': 3,
-    'delivered': 4,
+    'to_pickup': 1,
+    'loading': 2,
+    'in_transit': 3,
+    'arrived': 4,
+    'delivered': 5,
     'cancelled': -1, // -1 значит, что мы убираем прогресс-бар при отмене
   };
 
@@ -250,7 +257,7 @@ const fetchOrder = async () => {
               </h2>
 
               {/* Progress Bar */}
-              <div className="relative mb-8 px-4 md:px-8">
+              <div className="relative mb-8 overflow-x-auto overflow-y-hidden pb-4 md:overflow-visible md:pb-0 px-4 md:px-8">
                 {/* Подложка линии (чуть темнее для контраста) */}
                 <div className="absolute top-6 left-12 right-12 h-1 bg-slate-800 rounded-full" />
                 {/* Заполненная линия */}
@@ -259,7 +266,7 @@ const fetchOrder = async () => {
                   style={{ width: `calc(${progressPercent}% - 6rem)` }}
                 />
                 
-                <div className="relative flex justify-between">
+                <div className="relative flex justify-between min-w-[500px] md:min-w-0">
                   {STEPS.map((step, index) => {
                     // Разделяем состояния для более точной раскраски
                     const isCompleted = index < currentStep;
@@ -267,7 +274,7 @@ const fetchOrder = async () => {
                     const isFinalStep = step.key === 'delivered';
 
                     return (
-                      <div key={step.key} className="flex flex-col items-center w-24 md:w-32">
+                      <div key={step.key} className="flex flex-col items-center w-20 md:w-28">
                         <div className={`
                           w-12 h-12 rounded-2xl flex items-center justify-center
                           transition-all duration-500 z-10 relative
@@ -288,7 +295,7 @@ const fetchOrder = async () => {
                           )}
                         </div>
                         
-                        <p className={`text-[10px] md:text-xs font-mono font-bold mt-4 text-center tracking-widest transition-colors ${
+                        <p className={`text-[9px] md:text-xs font-mono font-bold mt-4 text-center tracking-widest transition-colors ${
                           isCompleted || isActive ? 'text-white' : 'text-slate-600'
                         }`}>
                           {step.label}
